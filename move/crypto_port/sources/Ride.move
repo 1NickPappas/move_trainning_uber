@@ -10,41 +10,42 @@ module crypto_port::ride {
 
     use sui::table::{Self, Table};
     // use std::string;
-
     // use sui::object_table::{Self, ObjectTable};
 
     //Consts ******************************************************
     // ************************************************************
 
     // Error types//
-    const EEmptyInventory: u64 = 0;
-    const EWrongDriverState: u64 = 1;
-    const EWrongRiderState: u64 = 2;
-    const ERideDoesNotExist: u64 = 3;
+    const EEmptyInventory: u64 = 0; // this is for the empty inventory
+    const EWrongDriverState: u64 = 1; // this is for the wrong driver state
+    const EWrongRiderState: u64 = 2;// this is for the wrong rider state
+    const ERideDoesNotExist: u64 = 3; // this is for the ride does not exist
+    /// Is this the driver at this ride
+    const EDriverAtRide: u64 = 4; // this is for the driver at other ride
+    const EDriverNotAtRide: u64 = 5; // this is for the driver not at ride
+
+    const EDriverNotInList: u64 = 6; // this is for the driver not in the driver list
+    const ERiderNotInList: u64 = 7; // this is for the rider not in the rider list
     ////////////////////////////////////////
 
-    const StateAccepted: u16 = 2;
-    const StateCompleted: u16 = 6;
-    const StateCancelled: u16 = 2;
-    const StatePending: u16 = 3;
+    const StateAccepted: u16 = 2; // this is for the accepted state
+    const StateCompleted: u16 = 6; // this is for the completed state
+    const StateCancelled: u16 = 2; // this is for the cancelled state
+    const StatePending: u16 = 3; // this is for the pending state
     /////////////////////////////////////////
     /// /// RiderStateAvailable is when the rider is not in a ride
-    const DriverStateAvailable: bool = false;
-    const DriverStateProcessing: bool = true;
+    const DriverStateAvailable: bool = false; // this is for the driver available
+    const DriverStateProcessing: bool = true; // this is for the driver processing a ride
     //////////////////////////////////////////
-    const RiderStateAvailable: bool = false;
-    const RiderStateProcessing: bool = true;
+    const RiderStateAvailable: bool = false; // this is for the rider available
+    const RiderStateProcessing: bool = true; // this is for the rider processing a ride
     /// 
     /// Driver status is active or inactive depends on the admin if want to activate or deactivate the driver
-    const DriverStatusActive: u16 = 0;
-    const DriverStatusInactive: u16 = 1;
+    const DriverStatusActive: u16 = 0; // this is for the driver active
+    const DriverStatusInactive: u16 = 1; // this is for the driver inactive
 
-    ///
-    /// Is this the driver at this ride
-    const EDriverAtRide: u64 = 0;
-    const EDriverNotAtRide: u64 = 1;
 
-    const EDriverNotInList: u64 = 0;
+
 
 
 
@@ -68,6 +69,7 @@ module crypto_port::ride {
 
     }
 
+
     struct Ride has  key,store {
         id: UID, // i dont know if this is nessesary
         estimate_distance: u64,
@@ -79,7 +81,7 @@ module crypto_port::ride {
     }
 
 
-    //na valw ride
+    // this is the storage that will be shared
     struct RidesStorage has key,store{
         id: UID,
         // estimate_distance: u64,
@@ -94,7 +96,7 @@ module crypto_port::ride {
     }
 
 
-    // for opt *********************************
+    // 
 
     struct Driver has store{
         
@@ -113,11 +115,8 @@ module crypto_port::ride {
     struct State has store ,copy,drop {
         value: u16, // 0 for accepted , 1 for completed , 2 for cancelled
     }
-    // Status will be used to change the status of the driver and the rider
-    // struct Status has store ,copy,drop {
-    //     _value: u16, //
-    // }
 
+    // i will use this to change the actual distance at the RidesStorage
     struct Actual_distance has store ,copy,drop {
         value: u64,
     }
@@ -175,8 +174,11 @@ module crypto_port::ride {
         driver
     }
 
-    public fun send_driver_cap(_: &AdminCap,driver_cap : RideReadWriteCap, recipient: address) {
+    // this function will be called by the admin to send the driver cap to the incoming driver
+    public fun send_driver_cap(_: &AdminCap,info: &mut RidesStorage,driver_cap : RideReadWriteCap, recipient: address) {
         transfer::public_transfer(driver_cap, recipient);
+        // add driver to the driver list
+        table::add(&mut info.driver_id,recipient,Driver{driver_processing: DriverStateAvailable});
     }
 
     ///////////////////////////////////////////////////////////////////////////////////
@@ -191,11 +193,6 @@ module crypto_port::ride {
         estimate_distance: u64,
         ctx: &mut TxContext): address
     {
-        // check if rider is in rider list
-        // assert!(!table::contains(&info.rider_id,tx_context::sender(ctx)), ERideDoesNotExist);
-        //check if the rider is processing another ride
-        // assert!(table::borrow(&info.rider_id,tx_context::sender(ctx)).rider_processing == RiderStateProcessing, EWrongRiderState);
-        
         // i will check if the rider address is in the rider_id table
         // ifit is not i drop error with assert
         // and if it is in i will check if the rider is processing a ride
@@ -204,7 +201,8 @@ module crypto_port::ride {
             //change the rider state to processing
             let rider = table::borrow_mut(&mut info.rider_id,tx_context::sender(ctx));
             rider.rider_processing = RiderStateProcessing;
-            assert!(table::borrow(&info.rider_id,tx_context::sender(ctx)).rider_processing == RiderStateProcessing, EWrongRiderState);
+            // check if the rider is processing a ride
+            // assert!(table::borrow(&info.rider_id,tx_context::sender(ctx)).rider_processing == RiderStateProcessing, EWrongRiderState);
 
         }
         else{
@@ -216,11 +214,15 @@ module crypto_port::ride {
         //add the ride to the rides list
         let ride = Ride{
             id: object::new(ctx),
+            // estimate distance will be the distance that the rider will give
             estimate_distance: estimate_distance,
+            // actual_distance will be none
             actual_distance: option::none<Actual_distance>(),
             //ride_state will be pending
             ride_state: option::some(State{value: StatePending}),
+            // rider_address will be the tx sender
             rider_address: tx_context::sender(ctx),
+            // driver_address will be none until the driver accept the ride
             driver_address: option::none<address>(),
         };
         
@@ -229,43 +231,38 @@ module crypto_port::ride {
 
         //insert the new ride to the rides list
         table::add(&mut info.rides, ride_adr, ride);
+
+        // change rider state to processing
+        table::borrow_mut(&mut info.rider_id,tx_context::sender(ctx)).rider_processing = RiderStateProcessing;
+
+        // return the address of the ride
         ride_adr
     }
 
-    //need to be called by the driver  **maybe its done**
+    // read the rides list
     public fun get_rides(info: &RidesStorage):&Table<address,Ride>{
         &info.rides   
     }
         
     
 
-    // normaly this will return if the driver is processing a ride or not                 **maybe its done**
+    // this function return if the rider is processing a ride or not , 
+    //true if he is processing a ride and false if he is not processing a ride                
     public fun is_rider_processing(infos: &RidesStorage,rider : address):bool{
 
-        if (table::contains(&infos.rider_id,rider)){
-            let rider_proc = table::borrow(&infos.rider_id,rider);
-            rider_proc.rider_processing
-        }
-        else{
-            false
-        }
-    
+        assert!(table::contains(&infos.rider_id,rider),ERiderNotInList); // check if the rider list is empty
+        let rider_proc = table::borrow(&infos.rider_id,rider);
+        rider_proc.rider_processing
 
     }
 
-    // normaly this will return if the driver is processing a ride or not             **maybe its done**
+    // this function return if the driver is processing a ride or not ,
+    // true if he is processing a ride and false if he is not processing a ride            
     public fun is_driver_processing(infos:&mut RidesStorage,driver : address):bool{
-        //check if the driver list is empty
-          // return the driver_processing
-        if (table::contains(&infos.driver_id,driver)){
-            let driver_proc = table::borrow(&infos.driver_id,driver);
-            driver_proc.driver_processing
-        }
-        else{
-            false
-        }
 
-
+        assert!(table::contains(&infos.driver_id,driver),EDriverNotInList); // check if the driver list is empty
+        let driver_proc = table::borrow(&infos.driver_id,driver);
+        driver_proc.driver_processing
 
     }
 
@@ -274,91 +271,63 @@ module crypto_port::ride {
     
     // this function is for the driver to accept the ride
     public fun accept_ride(infos: &mut RidesStorage,ride_id : address,ctx: &mut TxContext){
+        assert!(table::contains(&infos.driver_id,tx_context::sender(ctx)),EDriverNotInList); // check if the driver list is empty
 
-        //check if the driver is processing another ride
-        // assert!(table::borrow(&infos.driver_id,tx_context::sender(ctx)).driver_processing == DriverStateProcessing, EWrongDriverState);
-        if (table::contains(&infos.driver_id,tx_context::sender(ctx))){
-            assert!(table::borrow(&infos.driver_id,tx_context::sender(ctx)).driver_processing != DriverStateProcessing, EWrongDriverState);
-        }
-        else{
-            // insert the driver to the driver_id table if was first time
-            table::add(&mut infos.driver_id,tx_context::sender(ctx),Driver{driver_processing: DriverStateProcessing});
-        };
+        assert!(table::contains(&infos.rides,ride_id),ERideDoesNotExist); // check if the ride list is empty
+        
+        // add at ride the driver address
+        table::borrow_mut(&mut infos.rides,ride_id).driver_address = option::some(tx_context::sender(ctx));
+        let ride = table::borrow_mut(&mut infos.rides,ride_id) ;
+        let ride_state = option::borrow_mut(&mut ride.ride_state);
+        ride_state.value = StateAccepted;
 
-        if (table::contains( &infos.rides,ride_id) && table::contains(&infos.driver_id,tx_context::sender(ctx))){
-                    //change state to ""ACCEPTED""//
-            let ride = table::borrow_mut(&mut infos.rides,ride_id) ;
-            let ride_state = option::borrow_mut(&mut ride.ride_state);
-            ride_state.value = StateAccepted;
+        //change the driver state to processing
+        table::borrow_mut(&mut infos.driver_id,tx_context::sender(ctx)).driver_processing = DriverStateProcessing;
+        
 
-            //change the driver state to processing
-            table::borrow_mut(&mut infos.driver_id,tx_context::sender(ctx)).driver_processing = DriverStateProcessing;
-            
+        //change the rider state to processing
+        table::borrow_mut(&mut infos.rider_id,ride.rider_address).rider_processing = RiderStateProcessing;     
 
-            //change the rider state to processing
-            table::borrow_mut(&mut infos.rider_id,ride.rider_address).rider_processing = RiderStateProcessing;     
-        }   
-
-
- 
     }
 
-    // check the state of the ride    **maybe its done**
+    // this function return the state of the ride   
     public fun get_ride_state(infos: &RidesStorage,ride_id: address): u16{
-        //get the state of the ride
+        // here maybe need to check if the ride address is in the rides list (later)
         let ride = table::borrow(&infos.rides,ride_id);
         let state = option::borrow(&ride.ride_state);
         state.value
 
         
     }
-    
 
-    
-    // this function is for the driver to complete the ride  **maybe its done**
-    public fun end_ride(infos: &mut RidesStorage,ride_address: address,actual_distance: u64,ctx: &mut TxContext){
-        //check if the driver is processing another ride
-        if(table::contains(&infos.driver_id,tx_context::sender(ctx)) && table::contains(&infos.rides,ride_address)){
-            //check if the sender was the driver at this ride
-            assert!(table::borrow(&infos.rides,ride_address).driver_address != option::some(tx_context::sender(ctx)), EDriverNotAtRide);
-
-            //change the state to completed
-            let ride = table::borrow_mut(&mut infos.rides,ride_address) ;
-            let ride_rider_address = ride.rider_address;
-            let ride_state = option::borrow_mut(&mut ride.ride_state);
-            ride_state.value = StateCompleted;
+     public fun end_ride(infos: &mut RidesStorage,ride_address: address,actual_distance: u64,ctx: &mut TxContext){
         
-            //change the driver state to available
-            table::borrow_mut(&mut infos.driver_id,tx_context::sender(ctx)).driver_processing = DriverStateAvailable;
-            
-            //change the actual_distance
-            table::borrow_mut(&mut infos.rides,ride_address).actual_distance = option::some(Actual_distance{value: actual_distance});
-            
-            
-
-            if(table::contains(&infos.rider_id,ride_rider_address)){
-                //change the rider state to available
-                table::borrow_mut(&mut infos.rider_id,ride_rider_address).rider_processing = RiderStateAvailable;
-                // counter completed rides at rider
-                table::borrow_mut(&mut infos.rider_id,ride_rider_address).complete_rides_num = table::borrow(&infos.rider_id,ride_rider_address).complete_rides_num + 1;
-            };
-
- 
-            
-
-        };
+        assert!(table::contains(&infos.driver_id,tx_context::sender(ctx)),EDriverNotInList); // check if the driver list is empty
+        assert!(table::contains(&infos.rides,ride_address),ERideDoesNotExist); //check if the driver is in the driver list and if the ride is in the rides list
+        //check if the sender was the driver at this ride
+        assert!(table::borrow(&infos.rides,ride_address).driver_address == option::some(tx_context::sender(ctx)), EDriverNotAtRide);
         
 
-        
-        
-
-
-    }
-
+        //change the state to completed
+        let ride = table::borrow_mut(&mut infos.rides,ride_address) ;
+        let ride_rider_address = ride.rider_address;
+        let ride_state = option::borrow_mut(&mut ride.ride_state);
+        ride_state.value = StateCompleted;
     
+        //change the driver state to available
+        table::borrow_mut(&mut infos.driver_id,tx_context::sender(ctx)).driver_processing = DriverStateAvailable;
+        
+        //change the actual_distance
+        table::borrow_mut(&mut infos.rides,ride_address).actual_distance = option::some(Actual_distance{value: actual_distance});
 
-    
+        //change the rider state to available
+        table::borrow_mut(&mut infos.rider_id,ride_rider_address).rider_processing = RiderStateAvailable;
+        // counter completed rides at rider
+        //table::borrow_mut(&mut infos.rider_id,ride_rider_address).complete_rides_num = table::borrow(&infos.rider_id,ride_rider_address).complete_rides_num + 1;
+        // };
 
+        }
+        
 
     #[test_only]
     public entry fun test_init(ctx: &mut TxContext) {
