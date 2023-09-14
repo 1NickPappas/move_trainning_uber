@@ -91,20 +91,21 @@ module crypto_port::ride_tests {
         assert!(is_driver_processing == true, EWrongDriverState);
         test_scenario::return_shared<RidesStorage>(rides_storage);
     
-
+        // driver end the ride
+        // check if rider and driver are processing
         test_scenario::next_tx(scenario, driver);
         
         let rides_storage = test_scenario::take_shared<RidesStorage>(scenario);
         ride::end_ride(&mut rides_storage, _ride_id, 4, test_scenario::ctx(scenario));
         
         let ride_state: u16 = ride::get_ride_state(&mut rides_storage, _ride_id);
-        assert!(ride_state == 6, EWrongRideState);
+        assert!(ride_state == 6, EWrongRideState); // this will fail because the ride is not ended
         
         let is_rider_processing: bool = ride::is_rider_processing(&mut rides_storage, rider);
-        assert!(is_rider_processing == false, EWrongRiderState);
+        assert!(is_rider_processing == false, EWrongRiderState); // this will fail because the rider is processing
 
         let is_driver_processing: bool = ride::is_driver_processing(&mut rides_storage, driver);
-        assert!(is_driver_processing == false, EWrongDriverState);
+        assert!(is_driver_processing == false, EWrongDriverState); // this will fail because the driver is processing
         test_scenario::return_shared<RidesStorage>(rides_storage);
 
         // rider request a new ride
@@ -113,16 +114,16 @@ module crypto_port::ride_tests {
         let _ride_id_2 = ride::request_ride(&mut rides_storage, 14, test_scenario::ctx(scenario));
         // test if rider is processing
         let is_rider_processing: bool = ride::is_rider_processing(&mut rides_storage, rider);
-        assert!(is_rider_processing == true, EWrongRiderState);
-        test_scenario::return_shared<RidesStorage>(rides_storage);
-    
+        assert!(is_rider_processing == true, EWrongRiderState); // this will fail because the rider is not processing
 
+        test_scenario::return_shared<RidesStorage>(rides_storage);
         test_scenario::end(scenario_val);
     }
 
-    //tests from me //////////////////////////////////////////////////////////
-     //this will test if the RideReadWriteCap can be created and passed from the admin to the driver
-
+    
+     
+    // this fun will create the RideReadWriteCap and send it from admin to driver
+    // i will use this fun in tests
     fun test_create_send_ridereadwritecap_scenario(scenario: &mut Scenario, admin: address, driver: address){
 
         test_scenario::next_tx(scenario, admin);
@@ -150,9 +151,9 @@ module crypto_port::ride_tests {
         let scenario_val = test_scenario::begin(admin);
         let scenario = &mut scenario_val;
 
-        initialize(scenario, admin);
+        initialize(scenario, admin); 
 
-        test_create_send_ridereadwritecap_scenario(scenario, admin, driver);
+        test_create_send_ridereadwritecap_scenario(scenario, admin, driver); // this make and send from admin to driver the RideReadWriteCap
 
         test_scenario::end(scenario_val);
     }
@@ -164,15 +165,14 @@ module crypto_port::ride_tests {
         let admin = @0xAAAA;
         let rider = @0xBBBB;
         let driver = @0xCCCC;
-        // let driver_random_id: address = @0xDDDF;
-        // let ride_random_id: address = @0xDDDD;
 
         let scenario_val = test_scenario::begin(rider);
         let scenario = &mut scenario_val;
 
         initialize(scenario, admin); 
         // this make and send from admin to driver the RideReadWriteCap
-        test_create_send_ridereadwritecap_scenario(scenario, admin, driver);
+        test_create_send_ridereadwritecap_scenario(scenario, admin, driver); // this make and send from admin to driver the RideReadWriteCap
+        // this request a ride from rider
         test_scenario::next_tx(scenario, rider); // this test if the rider is proccesing before do anything
         let rides_storage = test_scenario::take_shared<RidesStorage>(scenario);
 
@@ -260,12 +260,15 @@ module crypto_port::ride_tests {
         initialize(scenario, admin); 
         // this make and send from admin to driver the RideReadWriteCap
         test_create_send_ridereadwritecap_scenario(scenario, admin, driver);
+
+        //  this request a ride from rider
         test_scenario::next_tx(scenario, rider); // this test if the rider is proccesing before do anything
         let rides_storage = test_scenario::take_shared<RidesStorage>(scenario);
         let ride_id= ride::request_ride(&mut rides_storage, 14, test_scenario::ctx(scenario));
         // check the rider state
         let is_rider_processing: bool = ride::is_rider_processing(&mut rides_storage, rider);
         assert!(is_rider_processing == true, EWrongRiderState);
+
         // next tx driver accept the ride
         test_scenario::next_tx(scenario, driver);
         ride::accept_ride(&mut rides_storage, ride_id, test_scenario::ctx(scenario));
