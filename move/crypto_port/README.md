@@ -1,4 +1,4 @@
-#!/bin/bash
+
 
 # CryptoPort Integration with Sui - Move/TypeScript Exercise
 
