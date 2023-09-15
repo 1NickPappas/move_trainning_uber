@@ -3,6 +3,8 @@ module crypto_port::ride {
     
     // use std::string::String;
     use std::option::{Self, Option};
+    use sui::event::{Self};
+    
 
     use sui::object::{Self, UID};
     use sui::tx_context::{Self, TxContext};
@@ -121,6 +123,11 @@ module crypto_port::ride {
         value: u64,
     }
 
+    // this is for the ride request EVENT
+    struct Ride_Request has copy, drop {
+        ride_adr: address,
+    }
+
     //********************************************
     //********************************************
 
@@ -173,9 +180,9 @@ module crypto_port::ride {
         };
         driver
     }
-
+     // @todo = rename this fun
     // this function will be called by the admin to send the driver cap to the incoming driver
-    public fun send_driver_cap(_: &AdminCap,info: &mut RidesStorage,driver_cap : RideReadWriteCap, recipient: address) {
+    public fun send_driver_cap(_: &AdminCap,info: &mut RidesStorage,driver_cap: RideReadWriteCap, recipient: address) {
         transfer::public_transfer(driver_cap, recipient);
         // add driver to the driver list
         table::add(&mut info.driver_id,recipient,Driver{driver_processing: DriverStateAvailable});
@@ -202,7 +209,8 @@ module crypto_port::ride {
             let rider = table::borrow_mut(&mut info.rider_id,tx_context::sender(ctx));
             rider.rider_processing = RiderStateProcessing;
             // check if the rider is processing a ride
-            // assert!(table::borrow(&info.rider_id,tx_context::sender(ctx)).rider_processing == RiderStateProcessing, EWrongRiderState);
+            //@todo = need to uncomment the next line
+            assert!(table::borrow(&info.rider_id,tx_context::sender(ctx)).rider_processing == RiderStateProcessing, EWrongRiderState);
 
         }
         else{
@@ -228,6 +236,8 @@ module crypto_port::ride {
         
         //get the address of the ride
         let ride_adr = object::id_address(&ride);
+
+        event::emit(Ride_Request { ride_adr: ride_adr });
 
         //insert the new ride to the rides list
         table::add(&mut info.rides, ride_adr, ride);
