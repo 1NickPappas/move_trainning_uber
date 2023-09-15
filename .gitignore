@@ -30,7 +30,4 @@ move/poc/Move.lock
 move/poc/build
 
 # env files under the setup directory
-setup/*.env
-.publish.res.json
-.env.localnet
-app/.env.localnet
+.env
